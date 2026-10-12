@@ -98,28 +98,38 @@ jobs:
           print(d.get('id','') if isinstance(d, dict) else '')"
           }
 
-          # Drop any existing "previous" release so the rename below can't collide.
+          # Gitea keeps a release's git tag when the release is deleted or
+          # renamed, and a new release reuses an existing tag rather than
+          # moving it, so stale tags are deleted by hand (a 404 is fine).
+          delete_tag() {
+            curl -s -o /dev/null -X DELETE -H "Authorization: token ${RELEASE_TOKEN}" \
+              "${API}/repos/${REPO}/tags/$1"
+          }
+
+          # Drop any existing "previous" release and tag so the rename below can't collide.
           prev_id=$(release_id previous)
-          [ -n "$prev_id" ] && curl -sf -X DELETE -H "Authorization: token ${RELEASE_TOKEN}" \
+          [ -n "$prev_id" ] && curl -sS --fail-with-body -X DELETE -H "Authorization: token ${RELEASE_TOKEN}" \
             "${API}/repos/${REPO}/releases/${prev_id}"
+          delete_tag previous
 
           # Demote the current "latest" to "previous" by renaming its tag in place -
           # no asset download/reupload needed, avoiding an extra round trip.
           latest_id=$(release_id latest)
           if [ -n "$latest_id" ]; then
-            curl -sf -X PATCH -H "Authorization: token ${RELEASE_TOKEN}" \
+            curl -sS --fail-with-body -X PATCH -H "Authorization: token ${RELEASE_TOKEN}" \
               -H "Content-Type: application/json" \
               -d '{"tag_name":"previous","name":"previous"}' \
               "${API}/repos/${REPO}/releases/${latest_id}" > /dev/null
           fi
+          delete_tag latest
 
           # Publish the new build as "latest".
-          new_json=$(curl -sf -X POST -H "Authorization: token ${RELEASE_TOKEN}" \
+          new_json=$(curl -sS --fail-with-body -X POST -H "Authorization: token ${RELEASE_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "{\"tag_name\":\"latest\",\"target_commitish\":\"${COMMIT_SHA}\",\"name\":\"latest (${COMMIT_SHA::8})\",\"draft\":false,\"prerelease\":false}" \
             "${API}/repos/${REPO}/releases")
           new_id=$(echo "$new_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
-          curl -sf -X POST -H "Authorization: token ${RELEASE_TOKEN}" \
+          curl -sS --fail-with-body -X POST -H "Authorization: token ${RELEASE_TOKEN}" \
             -F "attachment=@${APK};filename=${ASSET_NAME}" \
             "${API}/repos/${REPO}/releases/${new_id}/assets?name=${ASSET_NAME}"
 
