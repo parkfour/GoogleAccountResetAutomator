@@ -5,9 +5,11 @@ An Android automation tool that watches for a connection to a specific vehicle B
 voice commands on Android Auto after they get silently switched to a secondary (e.g. Google Workspace)
 account.
 
+<img src="docs/dashboard.png" alt="The app's dashboard: Accessibility Service status, primary account email, target car, and a Manual Trigger button" width="270">
+
 ## Overview
-On BT connect or dock, the app shows a notification offering to automatically switch the Google app
-back to your configured primary account. The switch is driven by an `AccessibilityService` that taps
+On BT connect or dock, the app automatically switches the Google app back to your configured
+primary account. The switch is driven by an `AccessibilityService` that taps
 through the Google app's own account-switcher UI — no root, no ADB pairing, and no clearing of app data.
 
 ### Core Architecture
@@ -17,8 +19,8 @@ through the Google app's own account-switcher UI — no root, no ADB pairing, an
   manual diagnostic execution.
 - **`AutomatorReceiver.kt`**: A manifest-registered broadcast receiver listening for
   `BluetoothDevice.ACTION_ACL_CONNECTED` and `Intent.ACTION_DOCK_EVENT`. It matches the connected device
-  by Bluetooth MAC address against the saved target car, then shows a notification with explicit
-  Switch / Open Google App / Dismiss choices.
+  by Bluetooth MAC address against the saved target car, then starts the switch (or, if the
+  Accessibility Service is off, shows a notification linking to its settings).
 - **`AccountSwitchAccessibilityService.kt`**: Launches the Google app and walks its accessibility node
   tree to open the account switcher and tap the row matching the saved primary email.
 
