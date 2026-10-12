@@ -1,0 +1,200 @@
+name: CI
+
+# Runs on both Gitea (where this repo is developed) and GitHub (its public
+# mirror). Only Gitea publishes its own releases and the mirror: those jobs
+# check github.server_url, so on GitHub just the checks run, plus the
+# GitHub release for version tags.
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mirror script tests
+        run: sh tests/publish-mirror.sh
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # Sets ANDROID_HOME and accepts the SDK licenses; AGP auto-downloads
+      # whatever specific platform/build-tools packages the build needs.
+      # The action's default packages include the legacy "tools", which
+      # Google's SDK repository no longer has, so sdkmanager fails on it.
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+
+  # On Gitea, every push to master builds a signed release APK and publishes
+  # it as the "latest" Gitea release, demoting whatever was "latest" before
+  # that to "previous" (reusing its already-built asset, no rebuild). Two
+  # releases = two stable download URLs.
+  #
+  # Needs these Gitea secrets:
+  #   RELEASE_TOKEN            Gitea access token with write access to this repo's releases
+  #   RELEASE_API_URL          this Gitea instance's API base, e.g. https://gitea.example.com/api/v1
+  #   KEYSTORE_B64             `base64 -w0 Signing/release.keystore.jks` output
+  #   KEYSTORE_STORE_PASSWORD  from Signing/keystore.properties
+  #   KEYSTORE_KEY_ALIAS       from Signing/keystore.properties
+  #   KEYSTORE_KEY_PASSWORD    from Signing/keystore.properties
+  release:
+    if: github.ref == 'refs/heads/master' && github.server_url != 'https://github.com'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Restore signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEYSTORE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEYSTORE_KEY_PASSWORD }}
+        run: sh scripts/restore-signing.sh
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease
+
+      # Everything past here talks to the Gitea API directly (release
+      # assets aren't part of the standard Actions artifact model).
+      - name: Publish current/previous APK releases
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          API: ${{ secrets.RELEASE_API_URL }}
+          REPO: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -e
+          APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+          ASSET_NAME=GoogleAccountResetAutomator.apk
+
+          # Gitea returns a fully empty body (not JSON like
+          # {"message":"Not Found"}) on a 404, e.g. before the "latest"/"previous"
+          # tags exist yet - this helper has to tolerate that.
+          release_id() {
+            curl -s -H "Authorization: token ${RELEASE_TOKEN}" \
+              "${API}/repos/${REPO}/releases/tags/$1" \
+              | python3 -c "import json,sys
+          try: d=json.load(sys.stdin)
+          except Exception: d={}
+          print(d.get('id','') if isinstance(d, dict) else '')"
+          }
+
+          # Drop any existing "previous" release so the rename below can't collide.
+          prev_id=$(release_id previous)
+          [ -n "$prev_id" ] && curl -sf -X DELETE -H "Authorization: token ${RELEASE_TOKEN}" \
+            "${API}/repos/${REPO}/releases/${prev_id}"
+
+          # Demote the current "latest" to "previous" by renaming its tag in place -
+          # no asset download/reupload needed, avoiding an extra round trip.
+          latest_id=$(release_id latest)
+          if [ -n "$latest_id" ]; then
+            curl -sf -X PATCH -H "Authorization: token ${RELEASE_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d '{"tag_name":"previous","name":"previous"}' \
+              "${API}/repos/${REPO}/releases/${latest_id}" > /dev/null
+          fi
+
+          # Publish the new build as "latest".
+          new_json=$(curl -sf -X POST -H "Authorization: token ${RELEASE_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag_name\":\"latest\",\"target_commitish\":\"${COMMIT_SHA}\",\"name\":\"latest (${COMMIT_SHA::8})\",\"draft\":false,\"prerelease\":false}" \
+            "${API}/repos/${REPO}/releases")
+          new_id=$(echo "$new_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+          curl -sf -X POST -H "Authorization: token ${RELEASE_TOKEN}" \
+            -F "attachment=@${APK};filename=${ASSET_NAME}" \
+            "${API}/repos/${REPO}/releases/${new_id}/assets?name=${ASSET_NAME}"
+
+  # Copies master, minus the paths in .gitdontforward, to main on the public
+  # GitHub mirror (scripts/publish-mirror.sh), and version tags along with
+  # it. Push master first and let this finish before pushing a tag.
+  # Skipped until the MIRROR_REPO and MIRROR_DEPLOY_KEY secrets are set;
+  # MIRROR_AUTHOR_NAME/EMAIL optionally replace the author on published
+  # commits.
+  publish:
+    needs: verify
+    if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')) && github.server_url != 'https://github.com'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Publish to the public mirror
+        env:
+          MIRROR_REPO: ${{ secrets.MIRROR_REPO }}
+          MIRROR_DEPLOY_KEY: ${{ secrets.MIRROR_DEPLOY_KEY }}
+          MIRROR_AUTHOR_NAME: ${{ secrets.MIRROR_AUTHOR_NAME }}
+          MIRROR_AUTHOR_EMAIL: ${{ secrets.MIRROR_AUTHOR_EMAIL }}
+        run: |
+          if [ -z "$MIRROR_REPO" ] || [ -z "$MIRROR_DEPLOY_KEY" ]; then
+            echo "Mirror secrets not set; skipping"
+            exit 0
+          fi
+          key=$(mktemp)
+          printf '%s\n' "$MIRROR_DEPLOY_KEY" > "$key"
+          # GitHub's published SSH host key, so the push can't be intercepted.
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$key.known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o UserKnownHostsFile=$key.known_hosts"
+          case "$GITHUB_REF" in
+            refs/tags/*) scripts/publish-mirror.sh --tags-only "$MIRROR_REPO" main ;;
+            *) scripts/publish-mirror.sh "$MIRROR_REPO" main ;;
+          esac
+
+  # On the public GitHub repository only: each version tag builds a signed
+  # release APK and attaches it to a GitHub Release of that tag. Needs the
+  # same four KEYSTORE_* secrets as the Gitea release job, set on GitHub.
+  release-apk:
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/v') && github.server_url == 'https://github.com'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Restore signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEYSTORE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEYSTORE_KEY_PASSWORD }}
+        run: sh scripts/restore-signing.sh
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          apk=GoogleAccountResetAutomator-${GITHUB_REF_NAME}.apk
+          cp "$(find app/build/outputs/apk/release -name '*.apk' | head -1)" "$apk"
+          gh release create "$GITHUB_REF_NAME" "$apk" --title "$GITHUB_REF_NAME" --generate-notes

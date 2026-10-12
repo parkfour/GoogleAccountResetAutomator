@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="reset_account"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_reset_account_short"
+        android:shortcutLongLabel="@string/shortcut_reset_account_long">
+        <intent
+            android:action="android.intent.action.MAIN"
+            android:targetPackage="com.parkfour.googleaccountresetautomator"
+            android:targetClass="com.parkfour.googleaccountresetautomator.VoiceTriggerActivity" />
+    </shortcut>
+</shortcuts>

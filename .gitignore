@@ -1,0 +1,26 @@
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+Signing/
+
+# Log files
+*.log
+
+# Mac OS X
+.DS_Store
+
+# Generated files
+*.ap_
+*.apk
+*.dex
+
+# Local tooling
+.rtk/
+graphify-out/
+CLAUDE.md
