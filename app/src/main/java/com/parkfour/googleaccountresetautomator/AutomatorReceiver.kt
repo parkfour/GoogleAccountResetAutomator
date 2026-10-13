@@ -22,6 +22,38 @@ class AutomatorReceiver : BroadcastReceiver() {
         // ACTION_DOCK_EVENT itself can't be caught here directly (see DockWatcherService).
         const val ACTION_DOCK_DETECTED  = "com.parkfour.intent.action.DOCK_DETECTED"
         const val ACTION_MANUAL_TRIGGER = "com.parkfour.intent.action.MANUAL_TRIGGER"
+
+        /**
+         * Shown when a switch can't run because the Accessibility Service isn't running: either
+         * it's off in Settings, or Android stopped it and didn't restart it (which only turning it
+         * off and on again fixes). Android has no way to request or restart it at runtime.
+         */
+        fun showServiceNotRunningNotification(context: Context) {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channel = NotificationChannel(CHANNEL_ID, "Automator Event Prompts", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Handles immediate hardware action selections for Google accounts."
+                enableLights(true)
+            }
+            manager.createNotificationChannel(channel)
+
+            val settingsIntent = PendingIntent.getActivity(
+                context,
+                4,
+                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle("Accessibility Service isn't running")
+                .setContentText("Couldn't switch accounts. Tap to open Settings, then turn the service off and on again.")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setContentIntent(settingsIntent)
+                .build()
+
+            manager.notify(ACCESSIBILITY_HINT_NOTIFICATION_ID, notification)
+        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -63,39 +95,6 @@ class AutomatorReceiver : BroadcastReceiver() {
             savedPrimaryEmail,
             restartAndroidAuto = action == ACTION_MANUAL_TRIGGER
         )
-        if (!started) {
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            showAccessibilityDisabledNotification(context, notificationManager)
-        }
-    }
-
-    /**
-     * Shown when the user taps "Switch to Primary Account" but the Accessibility Service
-     * hasn't been enabled in Settings, since Android has no way to request it at runtime.
-     */
-    private fun showAccessibilityDisabledNotification(context: Context, manager: NotificationManager) {
-        val channel = NotificationChannel(CHANNEL_ID, "Automator Event Prompts", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Handles immediate hardware action selections for Google accounts."
-            enableLights(true)
-        }
-        manager.createNotificationChannel(channel)
-
-        val settingsIntent = PendingIntent.getActivity(
-            context,
-            4,
-            Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Accessibility Service Not Enabled")
-            .setContentText("Enable it in Settings so account switching can run automatically. Tap to open Settings.")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .setContentIntent(settingsIntent)
-            .build()
-
-        manager.notify(ACCESSIBILITY_HINT_NOTIFICATION_ID, notification)
+        if (!started) showServiceNotRunningNotification(context)
     }
 }

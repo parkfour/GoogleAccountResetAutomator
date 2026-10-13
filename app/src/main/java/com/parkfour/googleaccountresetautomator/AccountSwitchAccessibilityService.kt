@@ -95,10 +95,16 @@ class AccountSwitchAccessibilityService : AccessibilityService() {
         fun resumePendingSwitchIfAny(context: Context) {
             val pending = pendingSwitch ?: return
             pendingSwitch = null
-            val service = instance ?: return
-            Log.d(TAG, "Device unlocked; resuming deferred switch to ${pending.primaryEmail}.")
             (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
                 .cancel(WAITING_UNLOCK_NOTIFICATION_ID)
+            // Android can stop the service while the phone sits locked and not restart it,
+            // even though it's still switched on in Settings; only toggling it brings it back.
+            val service = instance ?: run {
+                Log.e(TAG, "Device unlocked, but the accessibility service isn't running; dropping deferred switch.")
+                AutomatorReceiver.showServiceNotRunningNotification(context)
+                return
+            }
+            Log.d(TAG, "Device unlocked; resuming deferred switch to ${pending.primaryEmail}.")
             service.beginSwitch(context.applicationContext, pending.primaryEmail, pending.restartAndroidAuto)
         }
 

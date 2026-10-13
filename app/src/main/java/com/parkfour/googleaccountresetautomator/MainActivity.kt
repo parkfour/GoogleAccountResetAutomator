@@ -108,6 +108,9 @@ fun MainScreen() {
     var primaryEmailInput by remember { mutableStateOf(sharedPrefs.getString("PRIMARY_EMAIL", "") ?: "") }
 
     var accessibilityEnabled by remember { mutableStateOf(isAccessibilityServiceEnabled(context)) }
+    // Switched on in Settings isn't enough: Android can stop the service and not restart it.
+    var accessibilityRunning by remember { mutableStateOf(AccountSwitchAccessibilityService.isRunning()) }
+    val accessibilityOk = accessibilityEnabled && accessibilityRunning
 
     // Refresh the status when the user comes back from Settings > Accessibility.
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -115,6 +118,7 @@ fun MainScreen() {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 accessibilityEnabled = isAccessibilityServiceEnabled(context)
+                accessibilityRunning = AccountSwitchAccessibilityService.isRunning()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -154,7 +158,7 @@ fun MainScreen() {
                 .fillMaxWidth()
                 .padding(bottom = 16.dp),
             colors = CardDefaults.cardColors(
-                containerColor = if (accessibilityEnabled)
+                containerColor = if (accessibilityOk)
                     MaterialTheme.colorScheme.surfaceVariant
                 else
                     MaterialTheme.colorScheme.errorContainer
@@ -162,14 +166,21 @@ fun MainScreen() {
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = if (accessibilityEnabled) "Accessibility Service: Enabled" else "Accessibility Service: Not Enabled",
+                    text = when {
+                        accessibilityOk -> "Accessibility Service: Enabled"
+                        accessibilityEnabled -> "Accessibility Service: Enabled but not running"
+                        else -> "Accessibility Service: Not Enabled"
+                    },
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (accessibilityEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    color = if (accessibilityOk) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                 )
-                if (!accessibilityEnabled) {
+                if (!accessibilityOk) {
                     Text(
-                        text = "Required to automate switching the Google app back to your primary account. Android only lets you grant this from Settings.",
+                        text = if (accessibilityEnabled)
+                            "Android has stopped the service. Turn it off and on again in Settings to restart it."
+                        else
+                            "Required to automate switching the Google app back to your primary account. Android only lets you grant this from Settings.",
                         fontSize = 13.sp,
                         modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
                     )
@@ -287,7 +298,7 @@ fun MainScreen() {
                 if (started) {
                     Toast.makeText(context, "Switching to primary account...", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(context, "Accessibility Service isn't enabled yet.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Accessibility Service isn't running. Check its status above.", Toast.LENGTH_LONG).show()
                 }
             },
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6200EE)),

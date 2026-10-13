@@ -27,12 +27,13 @@ exactly what it uses:
 - **Open source:** the code is here, and every release is built by CI from this repository and
   signed with the same key.
 
-## Known issue: phone locked for too long
+## Known issue: Accessibility Service stops running
 
-If the phone is locked when the car connects, the app wakes the screen and waits for you to unlock
-before switching. If it stays locked too long, the switch fails, and after that the app stops
-working until you go to **Settings → Accessibility → Google Account Reset Automator**, turn it off,
-and turn it back on.
+Occasionally, after the phone has been locked for a while, Android stops the app's Accessibility
+Service without restarting it, even though it is still switched on in Settings. Switches then can't
+run: the app shows **Accessibility Service isn't running** as a notification, and **Enabled but not
+running** on its dashboard. To fix it, go to **Settings → Accessibility → Google Account Reset
+Automator**, turn it off, and turn it back on.
 
 ## Overview
 On BT connect or dock, the app automatically switches the Google app back to your configured
@@ -59,7 +60,9 @@ through the Google app's own account-switcher UI — no root, no ADB pairing, an
    [Obtainium](https://github.com/ImranR98/Obtainium) to get updates automatically.
 2. Open it on your phone. Android will ask you to allow installs from that source (your browser or
    file manager) the first time.
-3. Follow the one-time device setup below.
+3. Follow the one-time device setup below. On Android 13 and newer, the Accessibility switch for an
+   app installed this way is greyed out at first: open the app's **App info**, tap **⋮ → Allow
+   restricted settings**, then turn the service on.
 
 Requires Android 11 (API 30) or newer.
 
