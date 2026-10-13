@@ -22,6 +22,8 @@ class AutomatorReceiver : BroadcastReceiver() {
         // ACTION_DOCK_EVENT itself can't be caught here directly (see DockWatcherService).
         const val ACTION_DOCK_DETECTED  = "com.parkfour.intent.action.DOCK_DETECTED"
         const val ACTION_MANUAL_TRIGGER = "com.parkfour.intent.action.MANUAL_TRIGGER"
+        // "Try again" on the failure notification; sent explicitly, so no intent filter.
+        const val ACTION_RETRY = "com.parkfour.intent.action.RETRY_SWITCH"
 
         /**
          * Shown when a switch can't run because the Accessibility Service isn't running: either
@@ -62,7 +64,8 @@ class AutomatorReceiver : BroadcastReceiver() {
 
         if (BluetoothDevice.ACTION_ACL_CONNECTED != action &&
             ACTION_DOCK_DETECTED != action &&
-            ACTION_MANUAL_TRIGGER != action) {
+            ACTION_MANUAL_TRIGGER != action &&
+            ACTION_RETRY != action) {
             return
         }
 
@@ -79,7 +82,7 @@ class AutomatorReceiver : BroadcastReceiver() {
             connectedDeviceAddress?.equals(savedTargetAddress, ignoreCase = true) == true
 
         // Verify if we should act based on your matching car rules or a simulation flag
-        if (!isTargetDevice && ACTION_DOCK_DETECTED != action && ACTION_MANUAL_TRIGGER != action) {
+        if (!isTargetDevice && action == BluetoothDevice.ACTION_ACL_CONNECTED) {
             return
         }
 

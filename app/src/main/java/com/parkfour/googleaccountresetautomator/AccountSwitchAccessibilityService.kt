@@ -5,11 +5,13 @@ import android.accessibilityservice.GestureDescription
 import android.app.KeyguardManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.Path
 import android.graphics.Rect
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -42,7 +44,10 @@ class AccountSwitchAccessibilityService : AccessibilityService() {
         private const val GOOGLE_APP_PACKAGE = "com.google.android.googlequicksearchbox"
         private const val ANDROID_AUTO_PACKAGE = "com.google.android.projection.gearhead"
         private const val AVATAR_RESOURCE_ID = "right_icons"
+        // Counts only while the Google app is on screen; MAX_ATTEMPT_MS caps the whole attempt,
+        // however long the notification shade or another app keeps covering it.
         private const val TIMEOUT_MS = 12000L
+        private const val MAX_ATTEMPT_MS = 5 * 60_000L
         private const val AA_RESTART_TIMEOUT_MS = 15000L
         private const val POLL_INTERVAL_MS = 400L
         private const val ACTION_RETRY_COOLDOWN_MS = 1500L
@@ -143,6 +148,8 @@ class AccountSwitchAccessibilityService : AccessibilityService() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var deadlineMs = 0L
+    private var giveUpAtMs = 0L
+    private var lastCheckAtMs = 0L
     private var running = false
     private var targetEmail = ""
     private var stage = Stage.TAPPING_THROUGH
@@ -175,10 +182,18 @@ class AccountSwitchAccessibilityService : AccessibilityService() {
         handler.removeCallbacksAndMessages(null)
         targetEmail = primaryEmail.trim().lowercase()
         stage = Stage.TAPPING_THROUGH
-        deadlineMs = SystemClock.elapsedRealtime() + TIMEOUT_MS
+        val now = SystemClock.elapsedRealtime()
+        deadlineMs = now + TIMEOUT_MS
+        giveUpAtMs = now + MAX_ATTEMPT_MS
+        lastCheckAtMs = now
         lastActionAtMs = 0L
         restartAndroidAutoRequested = restartAndroidAuto
         running = true
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(FAILURE_NOTIFICATION_ID)
+        // A retry is tapped from the shade, which would otherwise stay down over the Google app.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
+        }
 
         val launchIntent = context.packageManager.getLaunchIntentForPackage(GOOGLE_APP_PACKAGE)?.apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -196,7 +211,21 @@ class AccountSwitchAccessibilityService : AccessibilityService() {
     private fun checkState() {
         if (!running) return
         val now = SystemClock.elapsedRealtime()
-        if (now > deadlineMs) {
+
+        // The account switcher can open as its own window, so rootInActiveWindow alone isn't
+        // reliable - search every window's root regardless of reported package, since a dialog
+        // window's root package can differ from the hosting app's.
+        val googleRoots = windows.mapNotNull { it.root }
+        Log.d(TAG, "Poll: ${googleRoots.size} window roots -> ${googleRoots.map { it.packageName }}")
+
+        // While the notification shade or another app covers the Google app, its window isn't
+        // listed at all, so there is nothing to tap: stop the clock until it's back.
+        if (stage == Stage.TAPPING_THROUGH && googleRoots.none { it.packageName == GOOGLE_APP_PACKAGE }) {
+            deadlineMs += now - lastCheckAtMs
+        }
+        lastCheckAtMs = now
+
+        if (now > minOf(deadlineMs, giveUpAtMs)) {
             running = false
             if (stage == Stage.AA_FINDING_FORCE_STOP || stage == Stage.AA_CONFIRMING_STOP) {
                 Log.e(TAG, "Account switched, but gave up restarting Android Auto (stage=$stage).")
@@ -211,12 +240,6 @@ class AccountSwitchAccessibilityService : AccessibilityService() {
             }
             return
         }
-
-        // The account switcher can open as its own window, so rootInActiveWindow alone isn't
-        // reliable - search every window's root regardless of reported package, since a dialog
-        // window's root package can differ from the hosting app's.
-        val googleRoots = windows.mapNotNull { it.root }
-        Log.d(TAG, "Poll: ${googleRoots.size} window roots -> ${googleRoots.map { it.packageName }}")
 
         if (googleRoots.isEmpty()) {
             scheduleNextCheck()
@@ -330,10 +353,21 @@ class AccountSwitchAccessibilityService : AccessibilityService() {
             )
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
+            .apply { if (!success) addAction(0, "Try again", retryIntent()) }
             .build()
 
         manager.notify(if (success) SUCCESS_NOTIFICATION_ID else FAILURE_NOTIFICATION_ID, notification)
     }
+
+    /** Re-runs the switch the same way: a Manual Trigger retry also restarts Android Auto again. */
+    private fun retryIntent(): PendingIntent = PendingIntent.getBroadcast(
+        this,
+        5,
+        Intent(this, AutomatorReceiver::class.java).setAction(
+            if (restartAndroidAutoRequested) AutomatorReceiver.ACTION_MANUAL_TRIGGER else AutomatorReceiver.ACTION_RETRY
+        ),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
 
     private fun openAndroidAutoAppInfo() {
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
