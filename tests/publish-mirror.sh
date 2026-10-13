@@ -68,6 +68,19 @@ expect tags "$(git -C "$mirror" tag -l | tr '\n' ' ')" "v0.1.0 v0.2.0 "
 expect "v0.2.0 content" "$(git -C "$mirror" show v0.2.0:app.txt)" v2
 expect "v0.2.0 target" "$(git -C "$mirror" rev-parse v0.2.0)" "$(git -C "$mirror" rev-parse main)"
 
+echo "renames only the listed authors when MIRROR_REPLACE_EMAILS is set"
+setup
+commit wip app.txt=v1
+publish >/dev/null
+commit "feat: mine" app.txt=v2
+# Subshells: assignments before a function call can outlive it in sh.
+(GIT_AUTHOR_NAME=Alice GIT_AUTHOR_EMAIL=alice@example.com GIT_COMMITTER_NAME=Alice GIT_COMMITTER_EMAIL=alice@example.com \
+  commit "feat: contributor" contrib.txt="from alice")
+(MIRROR_AUTHOR_NAME="Public Name" MIRROR_AUTHOR_EMAIL=public@example.com MIRROR_REPLACE_EMAILS=other@example.com,dev@example.com \
+  publish >/dev/null)
+expect authors "$(git -C "$mirror" log --format='%s|%an <%ae>' -2 main | tr '\n' ';')" \
+  "feat: contributor|Alice <alice@example.com>;feat: mine|Public Name <public@example.com>;"
+
 echo "does nothing when there's nothing new"
 setup
 commit wip app.txt=v1
