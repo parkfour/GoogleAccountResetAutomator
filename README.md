@@ -14,7 +14,7 @@ This app switches it back for you: when your phone connects to your car's Blueto
 Google app's account switcher and picks your primary account, before you've pulled out of the
 driveway.
 
-<img src="docs/dashboard.png" alt="The app's dashboard: Accessibility Service status, primary account email, target car, and a Manual Trigger button" width="270">
+<img src="docs/dashboard.png" alt="The app's dashboard: Accessibility Service status, primary account email, target car, and a Manual Trigger button" width="270"> <img src="docs/demo.gif" alt="Automated account switch demonstration" width="270">
 
 ## What it can and can't do
 
