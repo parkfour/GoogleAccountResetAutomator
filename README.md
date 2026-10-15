@@ -1,5 +1,10 @@
 # Google Account Reset Automator
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Android 11+](https://img.shields.io/badge/Android-11%2B%20(API%2030%2B)-green.svg)](https://developer.android.com)
+[![Zero Internet Permission](https://img.shields.io/badge/Internet%20Permission-None-blue.svg)](#what-it-can-and-cant-do)
+[![Latest Release](https://img.shields.io/github/v/release/parkfour/GoogleAccountResetAutomator)](https://github.com/parkfour/GoogleAccountResetAutomator/releases/latest)
+
 **Does Gemini or Google Assistant on Android Auto keep answering as your work or school account?**
 Maybe "Hey Google" in the car says it can't do that with a Workspace account, or your personal
 calendar, contacts and routines have gone missing. The Google app has quietly switched to a
@@ -34,6 +39,12 @@ Service without restarting it, even though it is still switched on in Settings. 
 run: the app shows **Accessibility Service isn't running** as a notification, and **Enabled but not
 running** on its dashboard. To fix it, go to **Settings → Accessibility → Google Account Reset
 Automator**, turn it off, and turn it back on.
+
+To help prevent Android from killing the background service while the phone is locked, set the
+app's battery usage to **Unrestricted** (**Settings → Apps → Google Account Reset Automator → Battery
+→ Unrestricted**). Some device makers (especially Samsung, Xiaomi, and OnePlus) aggressively kill
+background services; see [dontkillmyapp.com](https://dontkillmyapp.com) for manufacturer-specific
+workarounds.
 
 ## Overview
 On BT connect or dock, the app automatically switches the Google app back to your configured
@@ -85,3 +96,5 @@ After installing the app:
 1. Set your primary account email and pick the target car from the paired Bluetooth device list.
 2. Enable the service under **Settings → Accessibility → Google Account Reset Automator** — Android has
    no in-app permission dialog for this, it must be granted manually.
+3. Set the app's battery usage to **Unrestricted** under **Settings → Apps → Google Account Reset Automator → Battery**
+   so OEM task killers don't stop the Accessibility Service in the background.
