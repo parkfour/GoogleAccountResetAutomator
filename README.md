@@ -56,8 +56,9 @@ through the Google app's own account-switcher UI — no root, no ADB pairing, an
 
 ## Install
 
-1. Download the APK from the [latest release](../../releases/latest), or add this repository to
-   [Obtainium](https://github.com/ImranR98/Obtainium) to get updates automatically.
+[<img src="docs/badge_obtainium.png" alt="Add to Obtainium" height="48">](https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.parkfour.googleaccountresetautomator%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Fparkfour%2FGoogleAccountResetAutomator%22%2C%22author%22%3A%22parkfour%22%2C%22name%22%3A%22Google%20Account%20Reset%20Automator%22%7D)
+
+1. Download the APK from the [latest release](../../releases/latest), or tap the badge above to add this repository directly to [Obtainium](https://github.com/ImranR98/Obtainium) for automatic updates.
 2. Open it on your phone. Android will ask you to allow installs from that source (your browser or
    file manager) the first time.
 3. Follow the one-time device setup below. On Android 13 and newer, the Accessibility switch for an
